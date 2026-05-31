@@ -2,60 +2,115 @@
 
 語言：[English](README.md)
 
-Local Subagent MCP 是一個本地優先的橋接層，用來把 coding agent 和本地語言模型接起來。
+Local Subagent MCP 是一個本地優先的橋接層，讓 coding agent 可以把本地語言模型當成可審查的 subagent 來使用。
 
-它讓 Codex、Claude Code 這類主 agent 可以把任務交給本地模型當 subagent 處理，但在任何有風險的動作發生前，仍由主 agent 先審核。換句話說，本地模型可以提出答案、推理和工具請求；主 agent 則負責工具執行、審核、除錯和資料標註。
+它的核心邊界很明確：本地模型可以提出答案、推理與 tool request，但真正的工具執行、審核、除錯與資料標註仍由主代理負責。
 
-簡單說：讓本地模型成為有用的助手，但讓主 agent 保持最後把關。
+## v1 目前包含
 
-## 為什麼需要這個專案
-
-本地模型已經越來越能參與真實 coding workflow，但直接把 shell、檔案修改、patch、測試或瀏覽器操作權限交給它，通常還不是最穩的做法。
-
-這個專案把邊界切清楚：
-
-- 主 agent 透過 MCP 呼叫本地 subagent。
-- 本地 subagent 可以要求使用工具，但不直接執行工具。
-- 主 agent 負責批准、拒絕或改寫工具請求。
-- 每次回答、工具請求、審核、修正和偏好標籤都可以被保存。
-- 這些 trace 之後可以轉成改進本地模型的資料。
-
-這樣一來，它既能拿來做日常 agent 實驗，也能慢慢累積高價值的本地模型優化資料。
-
-## 可以拿來做什麼
-
-- 在 Codex、Claude Code 或其他支援 MCP 的 agent 裡測試本地模型
-- 讓本地模型作為可審核的 coding subagent
-- 從真實任務中收集錯誤、修正和改進建議
-- 從已審核的 run 產生 SFT、preference、reward 或 raw trace 資料集
-- 讓工具使用維持由主 agent 代審代執行，而不是直接把控制權交給本地模型
-
-訓練、微調和模型服務部署會和 MCP 層分開處理。這個專案專注在 agent 介面和資料收集迴圈。
+- 用來啟動與延續 subagent run 的 MCP tools
+- 由主代理審核的 tool review 流程
+- 以 SQLite 儲存 runs、messages、tool requests、tool results、reviews 與 exports
+- 匯出 `raw trace / SFT / preference / reward` 的 JSONL 格式
+- 以 FastMCP 實作、適合本地 stdio client 的 server 入口
 
 ## 架構
 
-![Local Subagent MCP 架構](local-subagent-architecture.png)
+![Local Subagent MCP 架構圖](local-subagent-architecture.png)
 
-可編輯的圖檔來源：[local-subagent-architecture.drawio](local-subagent-architecture.drawio)
+可編輯圖檔：[local-subagent-architecture.drawio](local-subagent-architecture.drawio)
 
 本地模型服務可以是 Ollama、vLLM、llama.cpp、LM Studio，或任何 OpenAI-compatible chat completion endpoint。
 
-## 核心 MCP Tools
+## 安裝
 
-- `subagent_start_task`：開始一個本地 subagent run
-- `subagent_step`：用新的 context 或 observation 延續 run
-- `subagent_submit_tool_result`：把主 agent 的工具決策和觀察結果回傳給 subagent
-- `subagent_record_review`：保存分數、錯誤、改進點、修正答案和偏好標籤
-- `subagent_export_dataset`：將已審核的 trace 匯出成 JSONL
-- `subagent_get_run` 與 `subagent_list_runs`：查看歷史 run
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+pip install -e .
+```
+
+## 設定
+
+Server 會讀取以下環境變數：
+
+- `LOCAL_SUBAGENT_APP_NAME`
+- `LOCAL_SUBAGENT_DATABASE_PATH`
+- `LOCAL_SUBAGENT_EXPORT_DIR`
+- `LOCAL_SUBAGENT_MODEL_BASE_URL`
+- `LOCAL_SUBAGENT_MODEL_API_KEY`
+- `LOCAL_SUBAGENT_MODEL_NAME`
+- `LOCAL_SUBAGENT_TEMPERATURE`
+- `LOCAL_SUBAGENT_MAX_TOKENS`
+
+預設值：
+
+```text
+LOCAL_SUBAGENT_APP_NAME=local-subagent
+LOCAL_SUBAGENT_DATABASE_PATH=local_subagent.db
+LOCAL_SUBAGENT_EXPORT_DIR=exports
+LOCAL_SUBAGENT_MODEL_BASE_URL=http://127.0.0.1:11434/v1
+LOCAL_SUBAGENT_MODEL_API_KEY=ollama
+LOCAL_SUBAGENT_MODEL_NAME=qwen3
+LOCAL_SUBAGENT_TEMPERATURE=0.2
+LOCAL_SUBAGENT_MAX_TOKENS=2000
+```
+
+以 Ollama `/v1` 介面為例：
+
+```powershell
+$env:LOCAL_SUBAGENT_MODEL_BASE_URL = "http://127.0.0.1:11434/v1"
+$env:LOCAL_SUBAGENT_MODEL_API_KEY = "ollama"
+$env:LOCAL_SUBAGENT_MODEL_NAME = "qwen3"
+```
+
+## 啟動 MCP Server
+
+```bash
+python -m local_subagent
+```
+
+若已用 editable install 安裝，也可以直接執行：
+
+```bash
+local-subagent
+```
+
+目前以 FastMCP 為基礎，預設走本地 stdio 型態的 MCP 使用情境。
+
+## 主要 MCP Tools
+
+- `subagent_start_task`
+- `subagent_step`
+- `subagent_submit_tool_result`
+- `subagent_record_review`
+- `subagent_export_dataset`
+- `subagent_get_run`
+- `subagent_list_runs`
+
+## 一次完整流程
+
+1. 用 `subagent_start_task` 傳入任務與可選 context。
+2. 如果 subagent 回傳 `tool_requests`，由主代理先審核。
+3. 透過 `subagent_submit_tool_result` 把決策與 observation 回送給 subagent。
+4. 任務完成後，用 `subagent_record_review` 存下 review 與標註。
+5. 最後用 `subagent_export_dataset` 匯出資料集。
 
 ## 資料集輸出
 
-收集到的 run 可以匯出成：
+- `raw_trace_jsonl`：完整 audit trace 與 review payload
+- `sft_jsonl`：把 corrected answer 當成 assistant 輸出
+- `preference_jsonl`：`chosen` 與 `rejected` 配對
+- `reward_jsonl`：帶分數與 review note 的 response
 
-- Raw trace JSONL：用於除錯與審計
-- SFT JSONL：使用修正後或審核後的答案
-- Preference JSONL：使用 `chosen` 和 `rejected` 回覆
-- Reward JSONL：使用分數和審核意見
+## 執行測試
 
-更完整的實作計畫請看 [LOCAL_SUBAGENT_MCP_PLAN.md](LOCAL_SUBAGENT_MCP_PLAN.md)。
+```bash
+pytest -q
+```
+
+## 計畫文件
+
+實作拆分與 checkpoint 請看 [docs/superpowers/plans/2026-06-01-local-subagent-mcp-v1.md](docs/superpowers/plans/2026-06-01-local-subagent-mcp-v1.md)。
+
+原始產品方向請看 [LOCAL_SUBAGENT_MCP_PLAN.md](LOCAL_SUBAGENT_MCP_PLAN.md)。

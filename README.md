@@ -6,31 +6,13 @@ Local Subagent MCP is a local-first bridge between coding agents and local langu
 
 It lets a main agent, such as Codex or Claude Code, ask a local model to work as a subagent, then review what that subagent produced before anything risky happens. The local model can propose answers, reasoning, and tool requests. The main agent stays in charge of tool execution, review, debugging, and dataset labeling.
 
-The short version: use your local model as a useful assistant, while keeping the main agent as the responsible reviewer.
+## What v1 Includes
 
-## Why This Exists
-
-Local models are getting good enough to help with real coding workflows, but giving them direct access to shell commands, file edits, patches, tests, or browser automation is not always a good idea.
-
-This project keeps the boundary clear:
-
-- The main agent calls the local subagent through MCP.
-- The local subagent can ask for tools, but does not run them directly.
-- The main agent approves, rejects, or rewrites those tool requests.
-- Every answer, tool request, review, correction, and preference label can be saved.
-- The saved traces can become data for future model improvement.
-
-This makes the workflow useful both for day-to-day agent experiments and for building better local models over time.
-
-## What It Is For
-
-- Trying local models inside Codex, Claude Code, or another MCP-capable agent
-- Letting a local model act as a reviewable coding subagent
-- Capturing mistakes, fixes, and improvement notes from real tasks
-- Building SFT, preference, reward, or raw trace datasets from reviewed runs
-- Keeping tool use mediated by the main agent instead of handing full control to the local model
-
-Training, fine-tuning, and model serving are intentionally separate from this MCP layer. This project focuses on the agent interface and the data capture loop.
+- MCP tools for starting and continuing a subagent run
+- Main-agent-mediated tool review loop
+- SQLite persistence for runs, messages, tool requests, tool results, reviews, and exports
+- JSONL export formats for raw trace, SFT, preference, and reward datasets
+- A local FastMCP server entrypoint using stdio-friendly defaults
 
 ## Architecture
 
@@ -40,22 +22,95 @@ Editable diagram source: [local-subagent-architecture.drawio](local-subagent-arc
 
 The local model service can be Ollama, vLLM, llama.cpp, LM Studio, or any OpenAI-compatible chat completion endpoint.
 
+## Installation
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+pip install -e .
+```
+
+## Configuration
+
+The server reads these environment variables:
+
+- `LOCAL_SUBAGENT_APP_NAME`
+- `LOCAL_SUBAGENT_DATABASE_PATH`
+- `LOCAL_SUBAGENT_EXPORT_DIR`
+- `LOCAL_SUBAGENT_MODEL_BASE_URL`
+- `LOCAL_SUBAGENT_MODEL_API_KEY`
+- `LOCAL_SUBAGENT_MODEL_NAME`
+- `LOCAL_SUBAGENT_TEMPERATURE`
+- `LOCAL_SUBAGENT_MAX_TOKENS`
+
+Default values:
+
+```text
+LOCAL_SUBAGENT_APP_NAME=local-subagent
+LOCAL_SUBAGENT_DATABASE_PATH=local_subagent.db
+LOCAL_SUBAGENT_EXPORT_DIR=exports
+LOCAL_SUBAGENT_MODEL_BASE_URL=http://127.0.0.1:11434/v1
+LOCAL_SUBAGENT_MODEL_API_KEY=ollama
+LOCAL_SUBAGENT_MODEL_NAME=qwen3
+LOCAL_SUBAGENT_TEMPERATURE=0.2
+LOCAL_SUBAGENT_MAX_TOKENS=2000
+```
+
+Example for Ollama-compatible `/v1` usage:
+
+```powershell
+$env:LOCAL_SUBAGENT_MODEL_BASE_URL = "http://127.0.0.1:11434/v1"
+$env:LOCAL_SUBAGENT_MODEL_API_KEY = "ollama"
+$env:LOCAL_SUBAGENT_MODEL_NAME = "qwen3"
+```
+
+## Running The MCP Server
+
+```bash
+python -m local_subagent
+```
+
+Or, after editable install:
+
+```bash
+local-subagent
+```
+
+The server uses FastMCP and is intended for stdio-based local MCP clients.
+
 ## Core MCP Tools
 
-- `subagent_start_task`: start a local subagent run
-- `subagent_step`: continue the run with new context or observations
-- `subagent_submit_tool_result`: send the main agent's tool decision and observation back to the subagent
-- `subagent_record_review`: save scores, errors, improvements, corrected answers, and preference labels
-- `subagent_export_dataset`: export reviewed traces as JSONL
-- `subagent_get_run` and `subagent_list_runs`: inspect previous runs
+- `subagent_start_task`
+- `subagent_step`
+- `subagent_submit_tool_result`
+- `subagent_record_review`
+- `subagent_export_dataset`
+- `subagent_get_run`
+- `subagent_list_runs`
+
+## Example Workflow
+
+1. Call `subagent_start_task` with the task and optional context.
+2. If the subagent returns `tool_requests`, the main agent reviews them.
+3. Send the decision and observation back with `subagent_submit_tool_result`.
+4. Once the run is complete, store review labels with `subagent_record_review`.
+5. Export reviewed traces with `subagent_export_dataset`.
 
 ## Dataset Outputs
 
-The captured runs can be exported as:
+- `raw_trace_jsonl`: full audit trace with review payload
+- `sft_jsonl`: corrected answer appended as assistant output
+- `preference_jsonl`: chosen vs. rejected answer pairs
+- `reward_jsonl`: scored response plus review notes
 
-- Raw trace JSONL for debugging and audit
-- SFT JSONL using corrected or reviewed answers
-- Preference JSONL using `chosen` and `rejected` responses
-- Reward JSONL using scores and review notes
+## Running Tests
 
-For the fuller implementation plan, see [LOCAL_SUBAGENT_MCP_PLAN.md](LOCAL_SUBAGENT_MCP_PLAN.md).
+```bash
+pytest -q
+```
+
+## Project Plan
+
+For the implementation breakdown and checkpoints, see [docs/superpowers/plans/2026-06-01-local-subagent-mcp-v1.md](docs/superpowers/plans/2026-06-01-local-subagent-mcp-v1.md).
+
+For the original product direction, see [LOCAL_SUBAGENT_MCP_PLAN.md](LOCAL_SUBAGENT_MCP_PLAN.md).
