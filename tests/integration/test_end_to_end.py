@@ -21,8 +21,8 @@ class FakeAdapter:
         return self._responses.pop(0)
 
 
-def _run_tool(server_name: str, tool_name: str, arguments: dict[str, object]):
-    tools = asyncio.run(server_name.get_tools())
+def _run_tool(server, tool_name: str, arguments: dict[str, object]):
+    tools = asyncio.run(server.get_tools())
     result = asyncio.run(tools[tool_name].run(arguments))
     return json.loads(result[0].text)
 
@@ -66,10 +66,8 @@ def test_fake_local_model_round_trip(tmp_path: Path):
         server,
         "subagent_start_task",
         {
-            "params": {
-                "task": "Inspect the repository",
-                "context": {"files": ["README.md"]},
-            }
+            "task": "Inspect the repository",
+            "context": {"files": ["README.md"]},
         },
     )
     tool_request_id = start["tool_requests"][0]["tool_request_id"]
@@ -78,42 +76,36 @@ def test_fake_local_model_round_trip(tmp_path: Path):
         server,
         "subagent_submit_tool_result",
         {
-            "params": {
-                "run_id": start["run_id"],
-                "tool_request_id": tool_request_id,
-                "decision": "approved",
-                "observation": "H:/_python/LocalSubagent",
-            }
+            "run_id": start["run_id"],
+            "tool_request_id": tool_request_id,
+            "decision": "approved",
+            "observation": "H:/_python/LocalSubagent",
         },
     )
     review = _run_tool(
         server,
         "subagent_record_review",
         {
-            "params": {
-                "run_id": start["run_id"],
-                "score": 8,
-                "errors": [],
-                "improvements": ["keep the answer concise"],
-                "missing_parts": [],
-                "corrected_response": "Repository inspection complete.",
-            }
+            "run_id": start["run_id"],
+            "score": 8,
+            "errors": [],
+            "improvements": ["keep the answer concise"],
+            "missing_parts": [],
+            "corrected_response": "Repository inspection complete.",
         },
     )
     export = _run_tool(
         server,
         "subagent_export_dataset",
         {
-            "params": {
-                "format": "raw_trace_jsonl",
-                "run_id": start["run_id"],
-            }
+            "format": "raw_trace_jsonl",
+            "run_id": start["run_id"],
         },
     )
     run_details = _run_tool(
         server,
         "subagent_get_run",
-        {"params": {"run_id": start["run_id"]}},
+        {"run_id": start["run_id"]},
     )
 
     export_path = Path(export["export_path"])

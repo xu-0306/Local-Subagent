@@ -29,7 +29,11 @@ def export_raw_trace(trace: TraceRecord, review: ReviewRecord) -> str:
 
 
 def export_sft(trace: TraceRecord, review: ReviewRecord) -> str:
-    messages = [dict(message) for message in trace.messages]
+    messages = [
+        dict(message)
+        for message in trace.messages
+        if message.get("role") in {"system", "user"}
+    ]
     corrected_response = _first_text(review.corrected_response)
     if corrected_response is not None:
         messages.append({"role": "assistant", "content": corrected_response})

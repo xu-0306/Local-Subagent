@@ -42,6 +42,7 @@ def test_export_sft_appends_corrected_answer():
             messages=[
                 {"role": "system", "content": "system prompt"},
                 {"role": "user", "content": "original question"},
+                {"role": "assistant", "content": "incorrect draft"},
             ],
             tool_requests=[],
             tool_results=[],

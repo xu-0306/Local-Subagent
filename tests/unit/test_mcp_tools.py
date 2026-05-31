@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from local_subagent.config import AppConfig
 from local_subagent.runtime import SubagentResponse, ToolRequest
 from local_subagent.service import SubagentService
@@ -120,6 +122,63 @@ def test_submit_tool_result_records_decision_and_completes_run(tmp_path: Path):
     assert repository.list_tool_results(start["run_id"])[0].observation == "H:/_python/LocalSubagent"
 
 
+def test_submit_tool_result_rejects_tool_request_from_another_run(tmp_path: Path):
+    service, _, _ = _service(
+        tmp_path,
+        [
+            SubagentResponse(
+                message="Need shell output.",
+                tool_requests=[ToolRequest(name="shell", arguments={"cmd": "pwd"})],
+                done=False,
+            ),
+            SubagentResponse(message="Done.", done=True),
+        ],
+    )
+
+    first = service.start_task(task="Inspect repo A")
+    second = service.start_task(task="Inspect repo B")
+
+    with pytest.raises(ValueError, match="does not belong"):
+        service.submit_tool_result(
+            run_id=second["run_id"],
+            tool_request_id=first["tool_requests"][0]["tool_request_id"],
+            decision="approved",
+            observation="wrong run",
+        )
+
+
+def test_submit_tool_result_rejects_duplicate_resolution(tmp_path: Path):
+    service, _, _ = _service(
+        tmp_path,
+        [
+            SubagentResponse(
+                message="Need shell output.",
+                tool_requests=[ToolRequest(name="shell", arguments={"cmd": "pwd"})],
+                done=False,
+            ),
+            SubagentResponse(message="Done.", done=True),
+        ],
+    )
+
+    start = service.start_task(task="Inspect repo")
+    tool_request_id = start["tool_requests"][0]["tool_request_id"]
+
+    service.submit_tool_result(
+        run_id=start["run_id"],
+        tool_request_id=tool_request_id,
+        decision="approved",
+        observation="H:/_python/LocalSubagent",
+    )
+
+    with pytest.raises(ValueError, match="already has a recorded result"):
+        service.submit_tool_result(
+            run_id=start["run_id"],
+            tool_request_id=tool_request_id,
+            decision="approved",
+            observation="duplicate",
+        )
+
+
 def test_record_review_reports_dataset_readiness(tmp_path: Path):
     service, repository, _ = _service(
         tmp_path,
@@ -146,6 +205,19 @@ def test_record_review_reports_dataset_readiness(tmp_path: Path):
         "reward_jsonl",
     }
     assert repository.get_review(start["run_id"]) is not None
+
+
+def test_record_review_rejects_duplicate_review(tmp_path: Path):
+    service, _, _ = _service(
+        tmp_path,
+        [SubagentResponse(message="Done.", done=True)],
+    )
+    start = service.start_task(task="Answer a question")
+
+    service.record_review(run_id=start["run_id"], score=8)
+
+    with pytest.raises(ValueError, match="already has a stored review"):
+        service.record_review(run_id=start["run_id"], score=7)
 
 
 def test_export_dataset_writes_jsonl_file(tmp_path: Path):

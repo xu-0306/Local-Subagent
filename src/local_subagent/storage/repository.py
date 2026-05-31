@@ -158,6 +158,15 @@ class SQLiteRepository:
         ).fetchall()
         return [self._row_to_tool_request(row) for row in rows]
 
+    def get_tool_request(self, tool_request_id: str) -> ToolRequestRecord | None:
+        row = self._connection.execute(
+            "SELECT * FROM tool_requests WHERE tool_request_id = ?",
+            (tool_request_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return self._row_to_tool_request(row)
+
     def add_tool_result(self, result: ToolResultRecord) -> ToolResultRecord:
         with self._connection:
             self._connection.execute(
@@ -188,6 +197,18 @@ class SQLiteRepository:
             (run_id,),
         ).fetchall()
         return [self._row_to_tool_result(row) for row in rows]
+
+    def get_tool_result_for_request(
+        self,
+        tool_request_id: str,
+    ) -> ToolResultRecord | None:
+        row = self._connection.execute(
+            "SELECT * FROM tool_results WHERE tool_request_id = ?",
+            (tool_request_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return self._row_to_tool_result(row)
 
     def add_review(self, review: ReviewRecord) -> ReviewRecord:
         with self._connection:

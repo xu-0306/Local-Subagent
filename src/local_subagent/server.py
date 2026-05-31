@@ -1,107 +1,11 @@
 import os
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from fastmcp import FastMCP
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import Field
 
 from local_subagent.config import AppConfig
 from local_subagent.service import SubagentService
-
-
-class _BaseInput(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-        str_strip_whitespace=True,
-        validate_assignment=True,
-    )
-
-
-class StartTaskInput(_BaseInput):
-    task: str = Field(..., min_length=1, description="User or main-agent task instruction.")
-    context: dict[str, Any] | None = Field(
-        default=None,
-        description="Optional context, file hints, constraints, or prior findings.",
-    )
-    model_profile: dict[str, Any] | None = Field(
-        default=None,
-        description="Optional model selection or runtime parameter overrides.",
-    )
-
-
-class StepInput(_BaseInput):
-    run_id: str = Field(..., min_length=1, description="Existing run identifier.")
-    message: str = Field(..., min_length=1, description="Main-agent follow-up message or observation.")
-    context_delta: dict[str, Any] | None = Field(
-        default=None,
-        description="Optional incremental context for the next subagent step.",
-    )
-
-
-class ToolResultInput(_BaseInput):
-    run_id: str = Field(..., min_length=1, description="Existing run identifier.")
-    tool_request_id: str = Field(..., min_length=1, description="Tool request identifier to resolve.")
-    decision: Literal["approved", "rejected", "modified"] = Field(
-        ...,
-        description="Main-agent decision for the requested tool call.",
-    )
-    observation: str = Field(
-        ...,
-        min_length=1,
-        description="Observed result or reason returned to the subagent.",
-    )
-
-
-class ReviewInput(_BaseInput):
-    run_id: str = Field(..., min_length=1, description="Run identifier to review.")
-    score: int | None = Field(
-        default=None,
-        ge=0,
-        le=10,
-        description="Optional scalar score for reward-style labeling.",
-    )
-    errors: list[str] = Field(default_factory=list, description="Observed mistakes or failures.")
-    improvements: list[str] = Field(
-        default_factory=list,
-        description="Concrete improvements that would make the response better.",
-    )
-    missing_parts: list[str] = Field(
-        default_factory=list,
-        description="Important missing pieces or omitted requirements.",
-    )
-    corrected_response: str | None = Field(
-        default=None,
-        description="Optional corrected answer for SFT export.",
-    )
-    chosen: str | None = Field(
-        default=None,
-        description="Preferred answer text for preference export.",
-    )
-    rejected: str | None = Field(
-        default=None,
-        description="Rejected answer text for preference export.",
-    )
-
-
-class ExportInput(_BaseInput):
-    format: Literal[
-        "raw_trace_jsonl",
-        "sft_jsonl",
-        "preference_jsonl",
-        "reward_jsonl",
-    ] = Field(..., description="Dataset export format.")
-    run_id: str | None = Field(
-        default=None,
-        description="Optional run identifier to export a single run.",
-    )
-    filters: dict[str, Any] | None = Field(
-        default=None,
-        description="Optional export filters stored with export metadata.",
-    )
-
-
-class GetRunInput(_BaseInput):
-    run_id: str = Field(..., min_length=1, description="Run identifier to inspect.")
-
 
 def create_server(
     config: AppConfig | None = None,
@@ -126,13 +30,32 @@ def create_server(
             "openWorldHint": True,
         },
     )
-    def subagent_start_task(params: StartTaskInput) -> dict[str, Any]:
+    def subagent_start_task(
+        task: Annotated[
+            str,
+            Field(min_length=1, description="User or main-agent task instruction."),
+        ],
+        context: Annotated[
+            dict[str, Any] | None,
+            Field(
+                default=None,
+                description="Optional context, file hints, constraints, or prior findings.",
+            ),
+        ] = None,
+        model_profile: Annotated[
+            dict[str, Any] | None,
+            Field(
+                default=None,
+                description="Optional model selection or runtime parameter overrides.",
+            ),
+        ] = None,
+    ) -> dict[str, Any]:
         """Start a new subagent run and return its first response."""
 
         return resolved_service.start_task(
-            task=params.task,
-            context=params.context,
-            model_profile=params.model_profile,
+            task=task,
+            context=context,
+            model_profile=model_profile,
         )
 
     @mcp.tool(
@@ -145,13 +68,32 @@ def create_server(
             "openWorldHint": True,
         },
     )
-    def subagent_step(params: StepInput) -> dict[str, Any]:
+    def subagent_step(
+        run_id: Annotated[
+            str,
+            Field(min_length=1, description="Existing run identifier."),
+        ],
+        message: Annotated[
+            str,
+            Field(
+                min_length=1,
+                description="Main-agent follow-up message or observation.",
+            ),
+        ],
+        context_delta: Annotated[
+            dict[str, Any] | None,
+            Field(
+                default=None,
+                description="Optional incremental context for the next subagent step.",
+            ),
+        ] = None,
+    ) -> dict[str, Any]:
         """Continue an existing run with a main-agent message or observation."""
 
         return resolved_service.step(
-            run_id=params.run_id,
-            message=params.message,
-            context_delta=params.context_delta,
+            run_id=run_id,
+            message=message,
+            context_delta=context_delta,
         )
 
     @mcp.tool(
@@ -164,14 +106,34 @@ def create_server(
             "openWorldHint": True,
         },
     )
-    def subagent_submit_tool_result(params: ToolResultInput) -> dict[str, Any]:
+    def subagent_submit_tool_result(
+        run_id: Annotated[
+            str,
+            Field(min_length=1, description="Existing run identifier."),
+        ],
+        tool_request_id: Annotated[
+            str,
+            Field(min_length=1, description="Tool request identifier to resolve."),
+        ],
+        decision: Annotated[
+            Literal["approved", "rejected", "modified"],
+            Field(description="Main-agent decision for the requested tool call."),
+        ],
+        observation: Annotated[
+            str,
+            Field(
+                min_length=1,
+                description="Observed result or reason returned to the subagent.",
+            ),
+        ],
+    ) -> dict[str, Any]:
         """Record a tool review decision and continue the subagent run."""
 
         return resolved_service.submit_tool_result(
-            run_id=params.run_id,
-            tool_request_id=params.tool_request_id,
-            decision=params.decision,
-            observation=params.observation,
+            run_id=run_id,
+            tool_request_id=tool_request_id,
+            decision=decision,
+            observation=observation,
         )
 
     @mcp.tool(
@@ -184,18 +146,62 @@ def create_server(
             "openWorldHint": False,
         },
     )
-    def subagent_record_review(params: ReviewInput) -> dict[str, Any]:
+    def subagent_record_review(
+        run_id: Annotated[
+            str,
+            Field(min_length=1, description="Run identifier to review."),
+        ],
+        score: Annotated[
+            int | None,
+            Field(
+                default=None,
+                ge=0,
+                le=10,
+                description="Optional scalar score for reward-style labeling.",
+            ),
+        ] = None,
+        errors: Annotated[
+            list[str] | None,
+            Field(default=None, description="Observed mistakes or failures."),
+        ] = None,
+        improvements: Annotated[
+            list[str] | None,
+            Field(
+                default=None,
+                description="Concrete improvements that would make the response better.",
+            ),
+        ] = None,
+        missing_parts: Annotated[
+            list[str] | None,
+            Field(
+                default=None,
+                description="Important missing pieces or omitted requirements.",
+            ),
+        ] = None,
+        corrected_response: Annotated[
+            str | None,
+            Field(default=None, description="Optional corrected answer for SFT export."),
+        ] = None,
+        chosen: Annotated[
+            str | None,
+            Field(default=None, description="Preferred answer text for preference export."),
+        ] = None,
+        rejected: Annotated[
+            str | None,
+            Field(default=None, description="Rejected answer text for preference export."),
+        ] = None,
+    ) -> dict[str, Any]:
         """Store review feedback and report which dataset exports are now ready."""
 
         return resolved_service.record_review(
-            run_id=params.run_id,
-            score=params.score,
-            errors=params.errors,
-            improvements=params.improvements,
-            missing_parts=params.missing_parts,
-            corrected_response=params.corrected_response,
-            chosen=params.chosen,
-            rejected=params.rejected,
+            run_id=run_id,
+            score=score,
+            errors=errors or [],
+            improvements=improvements or [],
+            missing_parts=missing_parts or [],
+            corrected_response=corrected_response,
+            chosen=chosen,
+            rejected=rejected,
         )
 
     @mcp.tool(
@@ -208,13 +214,31 @@ def create_server(
             "openWorldHint": False,
         },
     )
-    def subagent_export_dataset(params: ExportInput) -> dict[str, Any]:
+    def subagent_export_dataset(
+        format: Annotated[
+            Literal[
+                "raw_trace_jsonl",
+                "sft_jsonl",
+                "preference_jsonl",
+                "reward_jsonl",
+            ],
+            Field(description="Dataset export format."),
+        ],
+        run_id: Annotated[
+            str | None,
+            Field(description="Optional run identifier to export a single run."),
+        ] = None,
+        filters: Annotated[
+            dict[str, Any] | None,
+            Field(description="Optional export filters stored with export metadata."),
+        ] = None,
+    ) -> dict[str, Any]:
         """Export stored traces into JSONL dataset formats."""
 
         return resolved_service.export_dataset(
-            format=params.format,
-            run_id=params.run_id,
-            filters=params.filters,
+            format=format,
+            run_id=run_id,
+            filters=filters,
         )
 
     @mcp.tool(
@@ -227,10 +251,15 @@ def create_server(
             "openWorldHint": False,
         },
     )
-    def subagent_get_run(params: GetRunInput) -> dict[str, Any]:
+    def subagent_get_run(
+        run_id: Annotated[
+            str,
+            Field(min_length=1, description="Run identifier to inspect."),
+        ],
+    ) -> dict[str, Any]:
         """Fetch one persisted run with its messages, tool reviews, and review data."""
 
-        return resolved_service.get_run(run_id=params.run_id)
+        return resolved_service.get_run(run_id=run_id)
 
     @mcp.tool(
         name="subagent_list_runs",

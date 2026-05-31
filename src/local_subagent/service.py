@@ -118,6 +118,17 @@ class SubagentService:
         observation: str,
     ) -> dict[str, Any]:
         self._require_run(run_id)
+        tool_request = self._repository.get_tool_request(tool_request_id)
+        if tool_request is None:
+            raise ValueError(f"Unknown tool_request_id: {tool_request_id}")
+        if tool_request.run_id != run_id:
+            raise ValueError(
+                f"Tool request {tool_request_id} does not belong to run {run_id}"
+            )
+        if self._repository.get_tool_result_for_request(tool_request_id) is not None:
+            raise ValueError(
+                f"Tool request {tool_request_id} already has a recorded result"
+            )
         self._repository.add_tool_result(
             ToolResultRecord(
                 tool_result_id=_new_id("tool_result"),
@@ -149,6 +160,8 @@ class SubagentService:
         rejected: str | None = None,
     ) -> dict[str, Any]:
         self._require_run(run_id)
+        if self._repository.get_review(run_id) is not None:
+            raise ValueError(f"Run {run_id} already has a stored review")
         timestamp = _now()
         stored_review = StoredReviewRecord(
             review_id=_new_id("review"),

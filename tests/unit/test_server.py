@@ -45,6 +45,23 @@ def test_create_server_registers_expected_tools():
     }
 
 
+def test_start_task_schema_is_flat_without_params_wrapper():
+    server = create_server(
+        config=AppConfig.from_env(
+            {
+                "LOCAL_SUBAGENT_DATABASE_PATH": str(Path("test-server.db")),
+                "LOCAL_SUBAGENT_EXPORT_DIR": "test-exports",
+            }
+        ),
+        service=DummyService(),
+    )
+
+    tools = asyncio.run(server.get_tools())
+
+    assert "params" not in tools["subagent_start_task"].parameters.get("properties", {})
+    assert "task" in tools["subagent_start_task"].parameters.get("properties", {})
+
+
 class DummyService:
     def start_task(self, **_: object) -> dict[str, object]:
         return {}
