@@ -6,8 +6,12 @@ __pycache__/
 *.db
 *.sqlite3
 .env
+*.tgz
 dist/
 build/
 exports/
 tests/
-docs/superpowers/plans/
+docs/
+.claude/
+.tmp-npm-cache/
+LOCAL_SUBAGENT_MCP_PLAN.md

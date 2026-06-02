@@ -7,6 +7,7 @@ name = "local-subagent"
 version = "0.1.0"
 description = "MCP server that exposes a local model as a mediated subagent."
 readme = "README.md"
+license = {text = "MIT"}
 requires-python = ">=3.12"
 dependencies = [
     "fastmcp",

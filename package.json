@@ -1,0 +1,40 @@
+{
+  "name": "@xu-0306/local-subagent-mcp",
+  "version": "0.1.0",
+  "description": "npx launcher for the Local Subagent Python MCP server.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xu-0306/Local-Subagent.git"
+  },
+  "homepage": "https://github.com/xu-0306/Local-Subagent#readme",
+  "bugs": {
+    "url": "https://github.com/xu-0306/Local-Subagent/issues"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "agent",
+    "subagent",
+    "local-llm",
+    "ollama",
+    "codex",
+    "claude-code"
+  ],
+  "bin": {
+    "local-subagent-mcp": "bin/local-subagent-mcp.js"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "bin/",
+    "pyproject.toml",
+    "README.md",
+    "README.zh-TW.md",
+    "src/local_subagent/**/*.py"
+  ],
+  "engines": {
+    "node": ">=18"
+  }
+}

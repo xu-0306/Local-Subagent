@@ -10,6 +10,7 @@ class RunRecord:
     run_id: str
     task: str
     model_name: str
+    runtime_profile: dict[str, Any]
     status: str
     created_at: datetime
     updated_at: datetime

@@ -51,13 +51,14 @@ class SQLiteRepository:
             self._connection.execute(
                 """
                 INSERT INTO runs (
-                    run_id, task, model_name, status, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                    run_id, task, model_name, runtime_profile_json, status, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run.run_id,
                     run.task,
                     run.model_name,
+                    _dump_json(run.runtime_profile),
                     run.status,
                     _format_datetime(run.created_at),
                     _format_datetime(run.updated_at),
@@ -251,6 +252,40 @@ class SQLiteRepository:
             return None
         return self._row_to_review(row)
 
+    def replace_review(self, review: ReviewRecord) -> ReviewRecord:
+        with self._connection:
+            cursor = self._connection.execute(
+                """
+                UPDATE reviews
+                SET
+                    review_id = ?,
+                    score = ?,
+                    errors_json = ?,
+                    improvements_json = ?,
+                    missing_parts_json = ?,
+                    corrected_response = ?,
+                    chosen = ?,
+                    rejected = ?,
+                    created_at = ?
+                WHERE run_id = ?
+                """,
+                (
+                    review.review_id,
+                    review.score,
+                    _dump_json(review.errors),
+                    _dump_json(review.improvements),
+                    _dump_json(review.missing_parts),
+                    review.corrected_response,
+                    review.chosen,
+                    review.rejected,
+                    _format_datetime(review.created_at),
+                    review.run_id,
+                ),
+            )
+        if cursor.rowcount == 0:
+            raise KeyError(review.run_id)
+        return review
+
     def add_export(self, export: ExportRecord) -> ExportRecord:
         with self._connection:
             self._connection.execute(
@@ -296,6 +331,7 @@ class SQLiteRepository:
                 run_id TEXT PRIMARY KEY,
                 task TEXT NOT NULL,
                 model_name TEXT NOT NULL,
+                runtime_profile_json TEXT NOT NULL DEFAULT '{}',
                 status TEXT NOT NULL,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
@@ -354,12 +390,31 @@ class SQLiteRepository:
             );
             """
         )
+        self._ensure_column(
+            "runs",
+            "runtime_profile_json",
+            "TEXT NOT NULL DEFAULT '{}'",
+        )
+
+    def _ensure_column(self, table_name: str, column_name: str, definition: str) -> None:
+        existing_columns = {
+            row["name"]
+            for row in self._connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+        }
+        if column_name in existing_columns:
+            return
+
+        with self._connection:
+            self._connection.execute(
+                f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}"
+            )
 
     def _row_to_run(self, row: sqlite3.Row) -> RunRecord:
         return RunRecord(
             run_id=row["run_id"],
             task=row["task"],
             model_name=row["model_name"],
+            runtime_profile=_load_json(row["runtime_profile_json"]),
             status=row["status"],
             created_at=_parse_datetime(row["created_at"]),
             updated_at=_parse_datetime(row["updated_at"]),
